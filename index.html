@@ -1,0 +1,1229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Meridian — B2B Payment Reconciliation & Unapplied Cash</title>
+  <meta name="description" content="Meridian accounts-receivable reconciliation prototype demonstrating unrecognised payer resolution, inline repetition rules, and explainable match reasoning.">
+  <!-- Fonts: Inter for UI typography, JetBrains Mono for financial identifiers, amounts, and bank codes -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+  <!-- App Header & Navigation -->
+  <header class="app-header">
+    <div class="header-left">
+      <div class="brand-badge">
+        <div class="brand-logo">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"></circle>
+            <path d="m4.93 4.93 4.24 4.24"></path>
+            <path d="m14.83 9.17 4.24-4.24"></path>
+            <path d="m14.83 14.83 4.24 4.24"></path>
+            <path d="m9.17 14.83-4.24 4.24"></path>
+            <circle cx="12" cy="12" r="4"></circle>
+          </svg>
+        </div>
+        <span class="brand-name">MERIDIAN</span>
+      </div>
+      <span class="header-divider">/</span>
+      <div class="workspace-picker">
+        <span class="workspace-tag">Acme Mid-Market Corp</span>
+        <span class="text-muted">· USD Operating</span>
+      </div>
+    </div>
+
+    <!-- Prototype Guide / Context Helper -->
+    <div class="header-center">
+      <div class="prototype-banner">
+        <span class="pulse-dot"></span>
+        <span>Interactive AR Prototype</span>
+        <button id="btn-toggle-guide" class="btn-guide-toggle" title="View prototype problem statement & test walkthrough">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><path d="M12 16v-4"></path><path d="M12 8h.01"></path></svg>
+          Prototype Guide
+        </button>
+      </div>
+    </div>
+
+    <div class="header-right">
+      <div class="system-sync">
+        <span class="sync-indicator"></span>
+        <span class="sync-text">Bank feed synced 3m ago</span>
+      </div>
+      <div class="user-profile">
+        <div class="avatar" title="Daniel Reyes (AR Specialist)">DR</div>
+        <div class="user-meta">
+          <span class="user-name">D. Reyes</span>
+          <span class="user-role">AR Lead</span>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Sub-navigation: The 3 Core Screens + Saved Payers -->
+  <nav class="sub-nav" aria-label="Main Views">
+    <div class="nav-tabs">
+      <button class="nav-tab active" id="tab-unapplied" data-target="screen-1">
+        <span class="tab-label">Unapplied cash</span>
+        <span class="tab-counter" id="unapplied-count">5</span>
+      </button>
+      <button class="nav-tab" id="tab-matched" data-target="screen-3">
+        <span class="tab-label">Matched payments</span>
+        <span class="tab-counter neutral">142</span>
+      </button>
+      <button class="nav-tab" id="tab-saved" data-target="screen-4">
+        <span class="tab-label">Saved payers</span>
+        <span class="tab-counter neutral" id="saved-payers-count">8</span>
+      </button>
+    </div>
+
+    <div class="nav-actions">
+      <div class="search-box">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+        <input type="text" placeholder="Filter queue (ref, amount, payer)..." id="queue-filter">
+      </div>
+    </div>
+  </nav>
+
+  <!-- Toast Notification System -->
+  <div id="toast-container" class="toast-container" aria-live="polite"></div>
+
+  <!-- MAIN CONTENT WRAPPER -->
+  <main class="main-container">
+
+    <!-- =============================================================== -->
+    <!-- SCREEN 1: UNAPPLIED CASH QUEUE                                  -->
+    <!-- =============================================================== -->
+    <section id="screen-1" class="screen-view active" aria-labelledby="screen-1-title">
+      <!-- Queue Header & KPI Strip -->
+      <div class="view-header">
+        <div class="view-header-title">
+          <h1 id="screen-1-title">Unapplied cash queue</h1>
+          <p class="text-secondary">Incoming bank transactions that could not be matched automatically to open invoices.</p>
+        </div>
+        <div class="view-header-stats">
+          <div class="stat-pill">
+            <span class="stat-kpi" id="stat-pending-amount">$106,840.50</span>
+            <span class="stat-lbl">Pending clearance</span>
+          </div>
+          <div class="stat-pill">
+            <span class="stat-kpi">4.0 days</span>
+            <span class="stat-lbl">Avg aging in queue</span>
+          </div>
+          <div class="stat-pill highlight">
+            <span class="stat-kpi">88.4%</span>
+            <span class="stat-lbl">Auto-match rate</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Action Prompt Banner -->
+      <div class="instruction-banner">
+        <div class="banner-icon">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+        </div>
+        <div class="banner-content">
+          <strong>Interactive Prompt Step:</strong> Click the first transaction (<strong>ASHFORD PMTS LTD · $47,320.00</strong>) to resolve the unrecognised payer in Screen 2.
+        </div>
+        <span class="banner-badge">Click row 1 below ↓</span>
+      </div>
+
+      <!-- Queue Table -->
+      <div class="table-card">
+        <table class="data-table" id="unapplied-table">
+          <thead>
+            <tr>
+              <th class="th-payer">Payer (from bank)</th>
+              <th class="th-amount text-right">Amount</th>
+              <th class="th-date">Received</th>
+              <th class="th-reason">Reason</th>
+              <th class="th-days text-right">Days in queue</th>
+              <th class="th-action text-right">Action</th>
+            </tr>
+          </thead>
+          <tbody id="unapplied-tbody">
+            <!-- Row 1: Interactive Ashford Payment -->
+            <tr class="interactive-row priority-row" id="row-ashford-47k" data-payer="ASHFORD PMTS LTD" data-amount="47320" title="Click to open resolution workspace">
+              <td class="td-payer">
+                <div class="payer-cell">
+                  <div class="row-indicator"></div>
+                  <div>
+                    <span class="payer-name-bank">ASHFORD PMTS LTD</span>
+                    <span class="bank-subtext">WIRE-8845217 · Acct ****4419</span>
+                  </div>
+                </div>
+              </td>
+              <td class="td-amount text-right monospaced font-semibold">$47,320.00</td>
+              <td class="td-date">12 Mar</td>
+              <td class="td-reason">
+                <span class="badge badge-unmatched">Payer not recognised</span>
+              </td>
+              <td class="td-days text-right monospaced">3</td>
+              <td class="td-action text-right">
+                <button class="btn-table-action" id="btn-resolve-ashford">
+                  <span>Resolve</span>
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"></polyline></svg>
+                </button>
+              </td>
+            </tr>
+
+            <!-- Row 2: Northwind -->
+            <tr class="static-row" data-payer="Northwind Supply Co">
+              <td class="td-payer">
+                <div class="payer-cell">
+                  <div>
+                    <span class="payer-name-bank">Northwind Supply Co</span>
+                    <span class="bank-subtext">ACH-7721094 · Acct ****9012</span>
+                  </div>
+                </div>
+              </td>
+              <td class="td-amount text-right monospaced">$8,940.50</td>
+              <td class="td-date">12 Mar</td>
+              <td class="td-reason">
+                <span class="badge badge-warning">Short payment</span>
+              </td>
+              <td class="td-days text-right monospaced">3</td>
+              <td class="td-action text-right">
+                <button class="btn-table-action secondary" onclick="alert('In this prototype, please select row 1 (ASHFORD PMTS LTD) to test the unrecognised payer and repetition flow.')">View</button>
+              </td>
+            </tr>
+
+            <!-- Row 3: Brighton -->
+            <tr class="static-row" data-payer="BRIGHTON GRP TREASURY">
+              <td class="td-payer">
+                <div class="payer-cell">
+                  <div>
+                    <span class="payer-name-bank">BRIGHTON GRP TREASURY</span>
+                    <span class="bank-subtext">WIRE-9930128 · Acct ****3188</span>
+                  </div>
+                </div>
+              </td>
+              <td class="td-amount text-right monospaced">$22,100.00</td>
+              <td class="td-date">11 Mar</td>
+              <td class="td-reason">
+                <span class="badge badge-unmatched">Payer not recognised</span>
+              </td>
+              <td class="td-days text-right monospaced">4</td>
+              <td class="td-action text-right">
+                <button class="btn-table-action secondary" onclick="alert('In this prototype, please select row 1 (ASHFORD PMTS LTD) to test the unrecognised payer and repetition flow.')">View</button>
+              </td>
+            </tr>
+
+            <!-- Row 4: Calder -->
+            <tr class="static-row" data-payer="Calder Industries">
+              <td class="td-payer">
+                <div class="payer-cell">
+                  <div>
+                    <span class="payer-name-bank">Calder Industries</span>
+                    <span class="bank-subtext">WIRE-5541890 · Acct ****6701</span>
+                  </div>
+                </div>
+              </td>
+              <td class="td-amount text-right monospaced">$15,600.00</td>
+              <td class="td-date">11 Mar</td>
+              <td class="td-reason">
+                <span class="badge badge-neutral">No remittance received</span>
+              </td>
+              <td class="td-days text-right monospaced">4</td>
+              <td class="td-action text-right">
+                <button class="btn-table-action secondary" onclick="alert('In this prototype, please select row 1 (ASHFORD PMTS LTD) to test the unrecognised payer and repetition flow.')">View</button>
+              </td>
+            </tr>
+
+            <!-- Row 5: Ashford (Older payment) -->
+            <tr class="static-row" data-payer="ASHFORD PMTS LTD">
+              <td class="td-payer">
+                <div class="payer-cell">
+                  <div>
+                    <span class="payer-name-bank">ASHFORD PMTS LTD</span>
+                    <span class="bank-subtext">WIRE-8891042 · Acct ****4419</span>
+                  </div>
+                </div>
+              </td>
+              <td class="td-amount text-right monospaced">$12,880.00</td>
+              <td class="td-date">09 Mar</td>
+              <td class="td-reason">
+                <span class="badge badge-unmatched">Payer not recognised</span>
+              </td>
+              <td class="td-days text-right monospaced">6</td>
+              <td class="td-action text-right">
+                <button class="btn-table-action secondary" id="btn-view-matched-sample" title="View how this payment looks once auto-matched with full reasoning">Jump to Matched</button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+        <div class="table-footer">
+          <span class="text-muted text-sm">Showing 5 of 5 unapplied transactions</span>
+          <div class="table-legend">
+            <span class="legend-item"><span class="legend-dot unmatched"></span> Payer not recognised</span>
+            <span class="legend-item"><span class="legend-dot warning"></span> Short payment</span>
+            <span class="legend-item"><span class="legend-dot neutral"></span> Missing remittance</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- =============================================================== -->
+    <!-- SCREEN 2: RESOLVING AN UNRECOGNISED PAYER (THE CORE INTERACTION) -->
+    <!-- =============================================================== -->
+    <section id="screen-2" class="screen-view" aria-labelledby="screen-2-title">
+      <!-- Top Navigation & Breadcrumbs -->
+      <div class="screen-header-bar">
+        <div class="breadcrumb-trail">
+          <button class="btn-back" id="btn-back-to-queue">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"></polyline></svg>
+            <span>Back to Queue</span>
+          </button>
+          <span class="breadcrumb-sep">/</span>
+          <span class="breadcrumb-current">Resolution: WIRE-8845217</span>
+        </div>
+        <div class="screen-header-meta">
+          <span class="badge badge-unmatched">Status: In Unapplied Queue</span>
+          <span class="timestamp-tag">Received 12 Mar 2025 (3 days ago)</span>
+        </div>
+      </div>
+
+      <!-- Split Layout Workspace -->
+      <div class="split-workspace">
+
+        <!-- LEFT PANEL: The Bank Payment & Source of Truth -->
+        <div class="split-panel left-panel">
+          <div class="panel-header">
+            <div class="panel-header-title">
+              <span class="panel-step-tag">SOURCE</span>
+              <h2>Bank transaction & remittance</h2>
+            </div>
+            <span class="badge badge-neutral">Inbound Wire</span>
+          </div>
+
+          <div class="panel-content">
+            <!-- Payment Core Summary Card -->
+            <div class="metadata-card">
+              <div class="meta-row highlight-amount">
+                <span class="meta-lbl">Payment amount</span>
+                <span class="meta-val monospaced amount-large">$47,320.00</span>
+              </div>
+              <div class="meta-grid">
+                <div class="meta-item">
+                  <span class="meta-lbl">Payer (bank transaction)</span>
+                  <span class="meta-val monospaced font-semibold text-highlight">ASHFORD PMTS LTD</span>
+                </div>
+                <div class="meta-item">
+                  <span class="meta-lbl">Bank reference</span>
+                  <span class="meta-val monospaced">WIRE-8845217</span>
+                </div>
+                <div class="meta-item">
+                  <span class="meta-lbl">Received date</span>
+                  <span class="meta-val">12 Mar 2025, 09:14 EST</span>
+                </div>
+                <div class="meta-item">
+                  <span class="meta-lbl">Originating bank account</span>
+                  <span class="meta-val monospaced">JPMorgan Chase · ****4419</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Remittance Advice Card -->
+            <div class="remittance-section">
+              <div class="section-title-row">
+                <div class="title-with-icon">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+                  <h3>Attached Remittance Advice</h3>
+                </div>
+                <span class="badge badge-success-subtle">OCR Verified (100% confidence)</span>
+              </div>
+
+              <!-- Remittance File Chip -->
+              <div class="remittance-chip" id="chip-remittance-preview" role="button" tabindex="0" title="Click to view remittance PDF extract">
+                <div class="chip-file-icon">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
+                </div>
+                <div class="chip-info">
+                  <span class="chip-filename">remittance_ashford_mar.pdf</span>
+                  <span class="chip-filesize">PDF · 142 KB · Attached by bank EDI</span>
+                </div>
+                <span class="chip-action">View document ↗</span>
+              </div>
+
+              <!-- Parsed Remittance Invoice Extraction List -->
+              <div class="parsed-invoices-box">
+                <div class="parsed-header">
+                  <span class="text-xs font-semibold text-secondary">REMITTANCE LISTS 6 INVOICE NUMBERS</span>
+                  <span class="text-xs text-muted">Sums to $47,320.00</span>
+                </div>
+                <div class="invoice-chips-list">
+                  <div class="inv-chip"><span class="chip-inv-id">INV-4471</span><span class="chip-inv-amt">$6,800.00</span></div>
+                  <div class="inv-chip"><span class="chip-inv-id">INV-4472</span><span class="chip-inv-amt">$8,240.00</span></div>
+                  <div class="inv-chip"><span class="chip-inv-id">INV-4488</span><span class="chip-inv-amt">$11,400.00</span></div>
+                  <div class="inv-chip"><span class="chip-inv-id">INV-4501</span><span class="chip-inv-amt">$5,150.00</span></div>
+                  <div class="inv-chip"><span class="chip-inv-id">INV-4502</span><span class="chip-inv-amt">$7,930.00</span></div>
+                  <div class="inv-chip"><span class="chip-inv-id">INV-4519</span><span class="chip-inv-amt">$7,800.00</span></div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Context Helper Note -->
+            <div class="audit-note">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+              <span>Why unmatched: Bank payer string <code>ASHFORD PMTS LTD</code> does not match any primary account name in the ERP master ledger.</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- RIGHT PANEL: The Analyst's Action -->
+        <div class="split-panel right-panel">
+          <div class="panel-header">
+            <div class="panel-header-title">
+              <span class="panel-step-tag">ACTION</span>
+              <h2>Apply payment to customer account</h2>
+            </div>
+            <span class="text-xs text-muted">Manual Reconciliation</span>
+          </div>
+
+          <div class="panel-content">
+            <!-- Account Search Field -->
+            <div class="search-account-block">
+              <label for="input-account-search" class="field-label">Apply to account…</label>
+              <div class="autocomplete-wrapper">
+                <div class="input-with-icon">
+                  <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                  <input type="text" id="input-account-search" class="input-text" placeholder="Type customer account name (e.g. Ashford Holdings)..." value="Ashford Holdings Inc" autocomplete="off">
+                  <button class="clear-search-btn" id="btn-clear-account" title="Clear search">×</button>
+                </div>
+
+                <!-- Dropdown suggestions -->
+                <div class="autocomplete-dropdown" id="account-dropdown" style="display: none;">
+                  <div class="dropdown-item selected" data-value="Ashford Holdings Inc">
+                    <div class="dropdown-main">
+                      <span class="acc-name">Ashford Holdings Inc</span>
+                      <span class="acc-badge">Primary ERP Match</span>
+                    </div>
+                    <span class="acc-sub">Customer ID: CUST-8812 · 6 open invoices ($47,320.00 total)</span>
+                  </div>
+                  <div class="dropdown-item" data-value="Ashford Capital Partners">
+                    <div class="dropdown-main">
+                      <span class="acc-name">Ashford Capital Partners</span>
+                    </div>
+                    <span class="acc-sub">Customer ID: CUST-3041 · 1 open invoice ($3,200.00)</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Open Invoices Matching Section -->
+            <div class="account-invoices-section" id="invoices-section">
+              <div class="invoices-header">
+                <div>
+                  <span class="section-subheading">Open invoices for <strong>Ashford Holdings Inc</strong></span>
+                  <span class="text-xs text-muted block">Matched against remittance advice (6 of 6 pre-selected)</span>
+                </div>
+                <div class="select-all-wrap">
+                  <label class="checkbox-label text-xs">
+                    <input type="checkbox" id="check-all-invoices" checked>
+                    <span>Select all (6)</span>
+                  </label>
+                </div>
+              </div>
+
+              <!-- Invoices Table -->
+              <div class="invoices-table-wrap">
+                <table class="invoices-table">
+                  <thead>
+                    <tr>
+                      <th class="th-chk"><span class="sr-only">Select</span></th>
+                      <th>Invoice</th>
+                      <th>Date</th>
+                      <th>Due Date</th>
+                      <th class="text-right">Amount Due</th>
+                      <th class="text-right">Applied</th>
+                    </tr>
+                  </thead>
+                  <tbody id="invoices-tbody">
+                    <tr class="invoice-row selected" data-inv="INV-4471" data-amt="6800.00">
+                      <td><input type="checkbox" class="inv-checkbox" checked></td>
+                      <td><span class="monospaced font-semibold text-primary">INV-4471</span></td>
+                      <td class="text-muted">14 Feb 2025</td>
+                      <td class="text-muted">14 Mar 2025</td>
+                      <td class="text-right monospaced">$6,800.00</td>
+                      <td class="text-right monospaced font-semibold text-success">$6,800.00</td>
+                    </tr>
+                    <tr class="invoice-row selected" data-inv="INV-4472" data-amt="8240.00">
+                      <td><input type="checkbox" class="inv-checkbox" checked></td>
+                      <td><span class="monospaced font-semibold text-primary">INV-4472</span></td>
+                      <td class="text-muted">14 Feb 2025</td>
+                      <td class="text-muted">14 Mar 2025</td>
+                      <td class="text-right monospaced">$8,240.00</td>
+                      <td class="text-right monospaced font-semibold text-success">$8,240.00</td>
+                    </tr>
+                    <tr class="invoice-row selected" data-inv="INV-4488" data-amt="11400.00">
+                      <td><input type="checkbox" class="inv-checkbox" checked></td>
+                      <td><span class="monospaced font-semibold text-primary">INV-4488</span></td>
+                      <td class="text-muted">18 Feb 2025</td>
+                      <td class="text-muted">18 Mar 2025</td>
+                      <td class="text-right monospaced">$11,400.00</td>
+                      <td class="text-right monospaced font-semibold text-success">$11,400.00</td>
+                    </tr>
+                    <tr class="invoice-row selected" data-inv="INV-4501" data-amt="5150.00">
+                      <td><input type="checkbox" class="inv-checkbox" checked></td>
+                      <td><span class="monospaced font-semibold text-primary">INV-4501</span></td>
+                      <td class="text-muted">22 Feb 2025</td>
+                      <td class="text-muted">22 Mar 2025</td>
+                      <td class="text-right monospaced">$5,150.00</td>
+                      <td class="text-right monospaced font-semibold text-success">$5,150.00</td>
+                    </tr>
+                    <tr class="invoice-row selected" data-inv="INV-4502" data-amt="7930.00">
+                      <td><input type="checkbox" class="inv-checkbox" checked></td>
+                      <td><span class="monospaced font-semibold text-primary">INV-4502</span></td>
+                      <td class="text-muted">22 Feb 2025</td>
+                      <td class="text-muted">22 Mar 2025</td>
+                      <td class="text-right monospaced">$7,930.00</td>
+                      <td class="text-right monospaced font-semibold text-success">$7,930.00</td>
+                    </tr>
+                    <tr class="invoice-row selected" data-inv="INV-4519" data-amt="7800.00">
+                      <td><input type="checkbox" class="inv-checkbox" checked></td>
+                      <td><span class="monospaced font-semibold text-primary">INV-4519</span></td>
+                      <td class="text-muted">25 Feb 2025</td>
+                      <td class="text-muted">25 Mar 2025</td>
+                      <td class="text-right monospaced">$7,800.00</td>
+                      <td class="text-right monospaced font-semibold text-success">$7,800.00</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <!-- Balancing Summary Footer -->
+              <div class="balancing-bar">
+                <div class="balance-item">
+                  <span class="balance-lbl">Inbound Payment</span>
+                  <span class="balance-val monospaced">$47,320.00</span>
+                </div>
+                <div class="balance-item">
+                  <span class="balance-lbl">Applied to Invoices (6)</span>
+                  <span class="balance-val monospaced text-success" id="val-total-applied">$47,320.00</span>
+                </div>
+                <div class="balance-item">
+                  <span class="balance-lbl">Variance</span>
+                  <span class="balance-val monospaced zero-variance" id="val-variance">$0.00</span>
+                </div>
+              </div>
+
+              <!-- Primary Apply Action Row -->
+              <div class="apply-action-bar" id="action-bar-primary">
+                <div class="action-info">
+                  <span class="status-ready-text">✓ Exact match (no variance)</span>
+                  <span class="text-xs text-muted">Ready to reconcile in ledger</span>
+                </div>
+                <button class="btn-primary" id="btn-apply-payment">
+                  <span>Apply payment</span>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                </button>
+              </div>
+
+              <!-- ======================================================= -->
+              <!-- THE MOMENT THAT MATTERS: INLINE POST-APPLY CARD        -->
+              <!-- Appears IN PLACE after clicking Apply Payment           -->
+              <!-- ======================================================= -->
+              <div class="inline-evidence-card" id="inline-remember-panel" style="display: none;" role="region" aria-label="Payer Mapping Rule Suggestion">
+                <div class="card-glow-edge"></div>
+                
+                <div class="evidence-header">
+                  <div class="evidence-title-group">
+                    <div class="repetition-badge">
+                      <span class="repetition-number">3rd</span>
+                      <span class="repetition-label">time</span>
+                    </div>
+                    <div>
+                      <h3 class="evidence-title">Remember this payer?</h3>
+                      <p class="evidence-subtitle">
+                        This is the <strong>3rd time</strong> an analyst has applied a payment from <code class="code-pill">ASHFORD PMTS LTD</code> to <code class="code-pill highlight">Ashford Holdings Inc</code>.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Supporting Evidence Checklist -->
+                <div class="evidence-body">
+                  <span class="evidence-heading">SUPPORTING EVIDENCE</span>
+                  <ul class="evidence-list">
+                    <li class="evidence-item">
+                      <span class="evidence-check">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                      </span>
+                      <div class="evidence-text">
+                        <strong>Same originating bank account (<code>****4419</code>)</strong> on all 3 payments
+                        <span class="evidence-subtext">JPMorgan Chase routing confirmed across wires from 14 Jan, 18 Feb, and 12 Mar.</span>
+                      </div>
+                    </li>
+                    <li class="evidence-item">
+                      <span class="evidence-check">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                      </span>
+                      <div class="evidence-text">
+                        <strong>All applied invoices billed to Ashford Holdings Inc</strong>
+                        <span class="evidence-subtext">Totaling 14 previous invoice line items with 100% customer account identity.</span>
+                      </div>
+                    </li>
+                    <li class="evidence-item">
+                      <span class="evidence-check">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                      </span>
+                      <div class="evidence-text">
+                        <strong>Remittance references matched on all 3</strong>
+                        <span class="evidence-subtext">EDI / PDF format and invoice numbering syntax identical across all submissions.</span>
+                      </div>
+                    </li>
+                  </ul>
+
+                  <p class="evidence-consequence">
+                    If you confirm, future payments from this payer will apply automatically. You can review or remove this at any time.
+                  </p>
+                </div>
+
+                <!-- Equal-Weight Choice Buttons -->
+                <div class="evidence-actions">
+                  <button class="btn-secondary" id="btn-remember-not-now">
+                    Not now
+                  </button>
+                  <button class="btn-primary" id="btn-remember-confirm">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                    Remember this payer
+                  </button>
+                </div>
+
+                <!-- Post-Confirmation State (Hidden initially) -->
+                <div class="post-confirm-message" id="post-confirm-box" style="display: none;">
+                  <div class="confirm-icon">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                  </div>
+                  <div class="confirm-text">
+                    <strong>Payer rule saved.</strong> Future wires from <code>ASHFORD PMTS LTD</code> will automatically match to <strong>Ashford Holdings Inc</strong>.
+                  </div>
+                  <button class="btn-inline-link" id="btn-goto-screen3-from-confirm">
+                    See how this appears in Matched payments →
+                  </button>
+                </div>
+
+              </div>
+              <!-- End of Inline Card -->
+
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- =============================================================== -->
+    <!-- SCREEN 3: A MATCHED PAYMENT, WITH ITS REASONING (THE TRUST HALF)-->
+    <!-- =============================================================== -->
+    <section id="screen-3" class="screen-view" aria-labelledby="screen-3-title">
+      <!-- Screen Header -->
+      <div class="view-header">
+        <div class="view-header-title">
+          <div class="title-row">
+            <h1 id="screen-3-title">Payment WIRE-8891042</h1>
+            <span class="badge badge-success-prominent" id="screen-3-status-badge">Applied automatically — 2 hours ago</span>
+          </div>
+          <p class="text-secondary">Payment details and auditable reasoning for automated match.</p>
+        </div>
+        <div class="view-header-actions">
+          <button class="btn-secondary" id="btn-audit-log-print">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"></polyline><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
+            Export audit log
+          </button>
+        </div>
+      </div>
+
+      <!-- 1-Click Unapply Confirmation Banner (hidden initially) -->
+      <div class="unapply-success-banner" id="unapply-success-banner" style="display: none;" role="alert">
+        <div class="unapply-banner-icon">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+        </div>
+        <div class="unapply-banner-content">
+          <div class="unapply-banner-title">
+            <strong>Payment unapplied in 1 click</strong> — Reversal signal captured
+          </div>
+          <p class="unapply-banner-desc">
+            <code>WIRE-8891042</code> ($12,880.00) was immediately unapplied and moved back to the <strong>Unapplied cash queue</strong>. Meridian captured this reversal signal to refine the matching heuristics.
+          </p>
+        </div>
+        <div class="unapply-banner-actions">
+          <button class="btn-primary btn-sm" id="btn-goto-queue-from-unapply">
+            View in queue →
+          </button>
+          <button class="btn-secondary btn-sm" id="btn-undo-unapply">
+            Undo
+          </button>
+        </div>
+      </div>
+
+      <!-- Detail Card & Reasoning Layout -->
+      <div class="matched-detail-grid">
+
+        <!-- Column 1: Payment Facts -->
+        <div class="detail-card">
+          <div class="card-header-simple">
+            <h3>Transaction summary</h3>
+            <span class="monospaced text-xs text-muted">ID: PMT-992104</span>
+          </div>
+
+          <div class="summary-list">
+            <div class="summary-row">
+              <span class="summary-label">Bank Payer Name</span>
+              <span class="summary-val monospaced font-semibold">ASHFORD PMTS LTD</span>
+            </div>
+            <div class="summary-row">
+              <span class="summary-label">Applied Account</span>
+              <span class="summary-val font-semibold text-primary">Ashford Holdings Inc</span>
+            </div>
+            <div class="summary-row">
+              <span class="summary-label">Amount</span>
+              <span class="summary-val monospaced font-semibold amount-highlight">$12,880.00</span>
+            </div>
+            <div class="summary-row">
+              <span class="summary-label">Received</span>
+              <span class="summary-val">09 Mar 2025, 14:22 EST</span>
+            </div>
+            <div class="summary-row">
+              <span class="summary-label">Bank Reference</span>
+              <span class="summary-val monospaced">WIRE-8891042</span>
+            </div>
+            <div class="summary-row">
+              <span class="summary-label">Originating Account</span>
+              <span class="summary-val monospaced">Chase · ****4419</span>
+            </div>
+            <div class="summary-row">
+              <span class="summary-label">Reconciliation Engine</span>
+              <span class="summary-val text-xs text-secondary">Meridian Rule Engine v3.4 (Heuristic + Alias)</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Column 2: THE REASONING BLOCK (The core trust feature) -->
+        <div class="reasoning-card" id="reasoning-block">
+          <div class="reasoning-header">
+            <div class="reasoning-title-wrap">
+              <div class="reasoning-icon">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+              </div>
+              <div>
+                <h2>Why this matched</h2>
+                <p class="reasoning-subtitle">Every piece of evidence Meridian used to reconcile this transaction without human intervention.</p>
+              </div>
+            </div>
+            <span class="badge badge-confidence">High Confidence (100%)</span>
+          </div>
+
+          <!-- Evidence breakdown list -->
+          <div class="reasoning-content">
+            <div class="evidence-node">
+              <div class="node-bullet">1</div>
+              <div class="node-content">
+                <div class="node-main">
+                  Payer <code class="code-pill">ASHFORD PMTS LTD</code> → <strong>Ashford Holdings Inc</strong>
+                </div>
+                <div class="node-sub">
+                  <a href="javascript:void(0)" class="saved-payer-link" id="link-to-saved-payers">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
+                    saved payer, confirmed 12 Mar by D. Reyes, used 4 times
+                  </a>
+                </div>
+              </div>
+            </div>
+
+            <div class="evidence-node">
+              <div class="node-bullet">2</div>
+              <div class="node-content">
+                <div class="node-main">
+                  Remittance advice received, listing 3 invoices
+                </div>
+                <div class="node-sub text-muted">
+                  Attached PDF parsed with zero OCR ambiguities; matches customer invoice syntax.
+                </div>
+              </div>
+            </div>
+
+            <div class="evidence-node">
+              <div class="node-bullet">3</div>
+              <div class="node-content">
+                <div class="node-main">
+                  <code class="code-pill">INV-4533</code> — <strong>$9,200.00</strong> — applied in full
+                </div>
+                <div class="node-sub text-muted">
+                  Invoice billed to Ashford Holdings Inc on 01 Mar 2025. Billed $9,200.00; closed in full.
+                </div>
+              </div>
+            </div>
+
+            <div class="evidence-node">
+              <div class="node-bullet">4</div>
+              <div class="node-content">
+                <div class="node-main">
+                  <code class="code-pill">INV-4540</code> — <strong>$3,680.00</strong> — applied in full
+                </div>
+                <div class="node-sub text-muted">
+                  Invoice billed to Ashford Holdings Inc on 03 Mar 2025. Billed $3,680.00; closed in full.
+                </div>
+              </div>
+            </div>
+
+            <div class="evidence-node partial-node">
+              <div class="node-bullet" style="background: #FEF3C7; color: #92400E;">5</div>
+              <div class="node-content">
+                <div class="node-main">
+                  <code class="code-pill">INV-4547</code> — <strong>$1,400.00</strong> — $1,247.00 applied, <span class="badge-partial-highlight"><strong>$153.00 still open</strong></span>
+                </div>
+                <div class="node-sub text-muted" style="color: #92400E;">
+                  <strong>Partially applied:</strong> Two clean invoices closed; remaining $153.00 continues aging without holding the whole $12,880.00 payment in unapplied cash.
+                </div>
+              </div>
+            </div>
+
+            <div class="evidence-node summary-node">
+              <div class="node-bullet check">✓</div>
+              <div class="node-content">
+                <div class="node-main font-semibold">
+                  Total applied: $12,880.00
+                </div>
+                <div class="node-sub text-success">
+                  Reconciled across 3 invoices ($9,200.00 + $3,680.00 + $1,247.00) · $153.00 balance remains aging on INV-4547
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- One-Click Reversal Action: The feedback loop -->
+          <div class="reasoning-footer">
+            <div class="footer-note">
+              <span class="text-xs text-muted">
+                <strong>1-click detection path:</strong> Reporting a bad match costs one click. The only way the engine finds out it made a mistake.
+              </span>
+            </div>
+            <button class="btn-unapply" id="btn-trigger-unapply" title="Click once to unapply this payment and flag the match engine">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path></svg>
+              <span>This is wrong — unapply</span>
+            </button>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Applied Invoices Table Breakdown -->
+      <div class="table-card mt-6">
+        <div class="card-header-simple">
+          <h3>Invoices affected by this transaction (3)</h3>
+          <span class="badge badge-neutral">General Ledger Cleared & Partial Allocation</span>
+        </div>
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Invoice Number</th>
+              <th>Customer Entity</th>
+              <th>Issue Date</th>
+              <th>Due Date</th>
+              <th class="text-right">Original Amount</th>
+              <th class="text-right">Amount Cleared</th>
+              <th class="text-right">Remaining Balance</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><span class="monospaced font-semibold">INV-4533</span></td>
+              <td>Ashford Holdings Inc</td>
+              <td>01 Mar 2025</td>
+              <td>31 Mar 2025</td>
+              <td class="text-right monospaced">$9,200.00</td>
+              <td class="text-right monospaced font-semibold text-success">$9,200.00</td>
+              <td class="text-right monospaced">$0.00</td>
+              <td><span class="badge badge-success-subtle">Applied in full</span></td>
+            </tr>
+            <tr>
+              <td><span class="monospaced font-semibold">INV-4540</span></td>
+              <td>Ashford Holdings Inc</td>
+              <td>03 Mar 2025</td>
+              <td>02 Apr 2025</td>
+              <td class="text-right monospaced">$3,680.00</td>
+              <td class="text-right monospaced font-semibold text-success">$3,680.00</td>
+              <td class="text-right monospaced">$0.00</td>
+              <td><span class="badge badge-success-subtle">Applied in full</span></td>
+            </tr>
+            <tr class="row-partial-invoice" style="background-color: #FFFDF5;">
+              <td><span class="monospaced font-semibold text-primary">INV-4547</span></td>
+              <td>Ashford Holdings Inc</td>
+              <td>05 Mar 2025</td>
+              <td>04 Apr 2025</td>
+              <td class="text-right monospaced">$1,400.00</td>
+              <td class="text-right monospaced font-semibold text-warning">$1,247.00</td>
+              <td class="text-right monospaced font-bold" style="color: #B45309;">$153.00</td>
+              <td><span class="badge badge-warning">Partially applied · $153.00 open</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- =============================================================== -->
+    <!-- SCREEN 4: SAVED PAYERS (ALIAS & REPUTATION MANAGEMENT)         -->
+    <!-- =============================================================== -->
+    <section id="screen-4" class="screen-view" aria-labelledby="screen-4-title">
+      <!-- Screen Header -->
+      <div class="view-header">
+        <div class="view-header-title">
+          <h1 id="screen-4-title">Saved payers</h1>
+          <p class="text-secondary">Confirmed 1:1 mappings between bank transaction payer strings and customer accounts. Used to match future payments automatically.</p>
+        </div>
+        <div class="view-header-stats">
+          <div class="stat-pill">
+            <span class="stat-kpi" id="stat-total-aliases">8 rules</span>
+            <span class="stat-lbl">Active aliases</span>
+          </div>
+          <div class="stat-pill">
+            <span class="stat-kpi">$1.48M</span>
+            <span class="stat-lbl">Auto-applied YTD</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Scope Explanation Banner -->
+      <div class="design-guardrail-note">
+        <div class="guardrail-icon">ℹ</div>
+        <div class="guardrail-content">
+          <strong>Deliberate Design Guardrail:</strong> Each rule is strictly a single 1:1 mapping: one payer string to one customer account. No scripting or conditional logic. This deliberate simplicity is what makes automatic matching safe to deploy and easy for analysts to audit.
+        </div>
+      </div>
+
+      <!-- Saved Payers Table -->
+      <div class="table-card">
+        <table class="data-table" id="saved-payers-table">
+          <thead>
+            <tr>
+              <th>Payer name (as on bank transaction)</th>
+              <th>Mapped customer account</th>
+              <th>Confirmed by</th>
+              <th>Date confirmed</th>
+              <th class="text-right">Auto-matched since</th>
+              <th class="text-right">Action</th>
+            </tr>
+          </thead>
+          <tbody id="saved-payers-tbody">
+            <!-- Row: Ashford Payments Ltd (Target for delete test) -->
+            <tr class="highlight-rule-row" id="row-rule-ashford">
+              <td>
+                <div class="payer-cell">
+                  <div class="active-rule-dot" title="Active rule"></div>
+                  <div>
+                    <span class="payer-name-bank">ASHFORD PMTS LTD</span>
+                    <span class="bank-subtext">Bank Acct: ****4419</span>
+                  </div>
+                </div>
+              </td>
+              <td>
+                <div class="account-cell">
+                  <span class="acc-name font-semibold">Ashford Holdings Inc</span>
+                  <span class="acc-sub">Customer ID: CUST-8812</span>
+                </div>
+              </td>
+              <td>
+                <div class="confirmed-by-cell">
+                  <span class="avatar-small">DR</span>
+                  <span>D. Reyes</span>
+                </div>
+              </td>
+              <td>12 Mar 2025</td>
+              <td class="text-right monospaced font-semibold">
+                <span class="match-count-badge">14 payments</span>
+                <span class="text-xs text-muted block">$312,400 total</span>
+              </td>
+              <td class="text-right">
+                <button class="btn-table-delete" id="btn-delete-ashford-rule" title="Delete this mapping rule">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                  <span>Remove</span>
+                </button>
+              </td>
+            </tr>
+
+            <!-- Other realistic company rules -->
+            <tr>
+              <td>
+                <div class="payer-cell">
+                  <div class="active-rule-dot"></div>
+                  <div>
+                    <span class="payer-name-bank">BRIGHTON GRP TREASURY</span>
+                    <span class="bank-subtext">Bank Acct: ****3188</span>
+                  </div>
+                </div>
+              </td>
+              <td>
+                <div class="account-cell">
+                  <span class="acc-name font-semibold">Brighton Global Ltd</span>
+                  <span class="acc-sub">Customer ID: CUST-4419</span>
+                </div>
+              </td>
+              <td>
+                <div class="confirmed-by-cell">
+                  <span class="avatar-small">SC</span>
+                  <span>S. Chen</span>
+                </div>
+              </td>
+              <td>28 Feb 2025</td>
+              <td class="text-right monospaced font-semibold">
+                <span class="match-count-badge">8 payments</span>
+                <span class="text-xs text-muted block">$184,500 total</span>
+              </td>
+              <td class="text-right">
+                <button class="btn-table-delete" onclick="triggerGenericDelete('BRIGHTON GRP TREASURY', '8 payments', '$184,500')">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                  <span>Remove</span>
+                </button>
+              </td>
+            </tr>
+
+            <tr>
+              <td>
+                <div class="payer-cell">
+                  <div class="active-rule-dot"></div>
+                  <div>
+                    <span class="payer-name-bank">APEX LOGISTICS NV</span>
+                    <span class="bank-subtext">Bank Acct: ****8802</span>
+                  </div>
+                </div>
+              </td>
+              <td>
+                <div class="account-cell">
+                  <span class="acc-name font-semibold">Apex Supply International</span>
+                  <span class="acc-sub">Customer ID: CUST-2201</span>
+                </div>
+              </td>
+              <td>
+                <div class="confirmed-by-cell">
+                  <span class="avatar-small">MP</span>
+                  <span>M. Patel</span>
+                </div>
+              </td>
+              <td>14 Jan 2025</td>
+              <td class="text-right monospaced font-semibold">
+                <span class="match-count-badge">23 payments</span>
+                <span class="text-xs text-muted block">$520,100 total</span>
+              </td>
+              <td class="text-right">
+                <button class="btn-table-delete" onclick="triggerGenericDelete('APEX LOGISTICS NV', '23 payments', '$520,100')">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                  <span>Remove</span>
+                </button>
+              </td>
+            </tr>
+
+            <tr>
+              <td>
+                <div class="payer-cell">
+                  <div class="active-rule-dot"></div>
+                  <div>
+                    <span class="payer-name-bank">VERTEX BIOPHARMA WIRE</span>
+                    <span class="bank-subtext">Bank Acct: ****1940</span>
+                  </div>
+                </div>
+              </td>
+              <td>
+                <div class="account-cell">
+                  <span class="acc-name font-semibold">Vertex Health Solutions</span>
+                  <span class="acc-sub">Customer ID: CUST-6502</span>
+                </div>
+              </td>
+              <td>
+                <div class="confirmed-by-cell">
+                  <span class="avatar-small">DR</span>
+                  <span>D. Reyes</span>
+                </div>
+              </td>
+              <td>09 Dec 2024</td>
+              <td class="text-right monospaced font-semibold">
+                <span class="match-count-badge">19 payments</span>
+                <span class="text-xs text-muted block">$465,400 total</span>
+              </td>
+              <td class="text-right">
+                <button class="btn-table-delete" onclick="triggerGenericDelete('VERTEX BIOPHARMA WIRE', '19 payments', '$465,400')">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                  <span>Remove</span>
+                </button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ================================================================= -->
+  <!-- MODAL: DELETE CONFIRMATION WITH CONSEQUENCE (Screen 4)            -->
+  <!-- =============================================================== -->
+  <div class="modal-backdrop" id="modal-delete-rule" style="display: none;">
+    <div class="modal-dialog" role="dialog" aria-labelledby="modal-del-title">
+      <div class="modal-header-danger">
+        <div class="danger-icon-wrap">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+        </div>
+        <div>
+          <h3 id="modal-del-title">Remove payer mapping?</h3>
+          <span class="text-xs text-muted">Impact Consequence Assessment</span>
+        </div>
+        <button class="modal-close" id="btn-modal-del-close">×</button>
+      </div>
+
+      <div class="modal-content">
+        <div class="consequence-box">
+          <p class="consequence-main">
+            Removing this will stop future automatic matching for <code class="code-pill danger" id="del-modal-payer">ASHFORD PMTS LTD</code>.
+          </p>
+          <div class="impact-stat-panel">
+            <div class="impact-stat-item">
+              <span class="stat-number" id="del-modal-count">14</span>
+              <span class="stat-desc">payments applied</span>
+            </div>
+            <div class="impact-stat-item">
+              <span class="stat-number" id="del-modal-val">$312,400</span>
+              <span class="stat-desc">total matched value</span>
+            </div>
+          </div>
+          <p class="consequence-prompt">
+            This mapping has applied <strong id="del-modal-count-text">14 payments</strong> totalling <strong id="del-modal-val-text">$312,400</strong>. Review them?
+          </p>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn-secondary" id="btn-just-remove">
+          Just remove it
+        </button>
+        <button class="btn-primary" id="btn-review-payments">
+          Review the 14 payments
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================================================================= -->
+  <!-- MODAL: REMITTANCE DOCUMENT VIEWER                                -->
+  <!-- =============================================================== -->
+  <div class="modal-backdrop" id="modal-remittance-viewer" style="display: none;">
+    <div class="modal-dialog modal-lg" role="dialog" aria-labelledby="modal-remit-title">
+      <div class="modal-header">
+        <div class="title-with-icon">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
+          <h3 id="modal-remit-title">Document Extract: remittance_ashford_mar.pdf</h3>
+        </div>
+        <button class="modal-close" id="btn-close-remittance">×</button>
+      </div>
+      <div class="modal-content">
+        <!-- Rendered Simulated Remittance Advice Slip -->
+        <div class="rendered-remittance-doc">
+          <div class="remittance-doc-header">
+            <div>
+              <div class="doc-company">ASHFORD PMTS LTD / ASHFORD HOLDINGS</div>
+              <div class="doc-sub">Accounts Payable Disbursement · Remittance Advice</div>
+              <div class="doc-sub">Origin Bank: JPMorgan Chase Wire Reference: WIRE-8845217</div>
+            </div>
+            <div class="doc-date-block text-right">
+              <div>Date: <strong>12 Mar 2025</strong></div>
+              <div>Total Wire: <strong class="monospaced">$47,320.00</strong></div>
+            </div>
+          </div>
+
+          <table class="remittance-doc-table">
+            <thead>
+              <tr>
+                <th>Invoice #</th>
+                <th>Invoice Date</th>
+                <th>Description</th>
+                <th class="text-right">Net Amount</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td>INV-4471</td><td>14-Feb-2025</td><td>Software subscription - Tier 1</td><td class="text-right monospaced">$6,800.00</td></tr>
+              <tr><td>INV-4472</td><td>14-Feb-2025</td><td>Integration & Support services</td><td class="text-right monospaced">$8,240.00</td></tr>
+              <tr><td>INV-4488</td><td>18-Feb-2025</td><td>Hardware telemetry lease</td><td class="text-right monospaced">$11,400.00</td></tr>
+              <tr><td>INV-4501</td><td>22-Feb-2025</td><td>Professional services retainer</td><td class="text-right monospaced">$5,150.00</td></tr>
+              <tr><td>INV-4502</td><td>22-Feb-2025</td><td>Custom reporting module</td><td class="text-right monospaced">$7,930.00</td></tr>
+              <tr><td>INV-4519</td><td>25-Feb-2025</td><td>Annual security token licenses</td><td class="text-right monospaced">$7,800.00</td></tr>
+            </tbody>
+            <tfoot>
+              <tr>
+                <td colspan="3" class="text-right font-bold">TOTAL REMITTANCE:</td>
+                <td class="text-right font-bold monospaced">$47,320.00</td>
+              </tr>
+            </tfoot>
+          </table>
+          <div class="doc-footer-stamp">
+            <span>OCR Match Score: 99.8%</span>
+            <span>Parsed by Meridian Ingestion Engine</span>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-secondary" id="btn-close-remittance-bottom">Close preview</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================================================================= -->
+  <!-- SLIDE-OVER DRAWER: PROTOTYPE WALKTHROUGH & DESIGN RATIONALE       -->
+  <!-- =============================================================== -->
+  <aside class="guide-drawer" id="guide-drawer">
+    <div class="guide-drawer-header">
+      <div class="title-with-icon">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><path d="M12 16v-4"></path><path d="M12 8h.01"></path></svg>
+        <h3>Prototype Walkthrough & Rationale</h3>
+      </div>
+      <button class="btn-close-guide" id="btn-close-guide">×</button>
+    </div>
+    <div class="guide-drawer-body">
+      <div class="guide-section">
+        <span class="guide-tag">PROBLEM 1 ADDRESSED</span>
+        <h4>Knowledge Evaporation (Screen 2)</h4>
+        <p>When an AR analyst manually matches an unrecognised payer name (e.g. <code>ASHFORD PMTS LTD</code> to <code>Ashford Holdings Inc</code>), existing tools discard that decision. The payment lands in the queue again the following month.</p>
+        <p><strong>The Meridian Solution:</strong> After manual clearing is completed, Meridian presents an inline card proposing to remember the payer based on <strong>3rd repetition</strong> and <strong>verifiable bank evidence</strong> (same bank account <code>****4419</code>, identical invoice billing, identical remittance syntax).</p>
+      </div>
+
+      <div class="guide-section">
+        <span class="guide-tag">PROBLEM 2 ADDRESSED</span>
+        <h4>Blind Trust & Partial Matching (Screen 3)</h4>
+        <p>Legacy tools show only "Matched". Analysts don't trust black boxes, so they spend hours manually re-verifying matches.</p>
+        <p><strong>The Meridian Solution:</strong></p>
+        <ul style="padding-left: 16px; font-size: 12px; color: var(--text-secondary); display: flex; flex-direction: column; gap: 4px; margin-top: 4px;">
+          <li><strong>Explainable Reasoning Block:</strong> Surfaces exact evidence the system had (saved payer, remittance OCR, exact lines).</li>
+          <li><strong>Partial Invoice Clearing:</strong> Shows 2 clean invoices closed, with <code>INV-4547</code> partly paid ($1,247.00 applied, $153.00 still open). Instead of holding the whole $12,880 in unapplied cash over a small difference, clean balances close automatically.</li>
+          <li><strong>1-Click Unapply Detection Path:</strong> A wrong match is only ever discovered when a person undoes it. The unapply action costs <em>one click</em> with no multi-step modal friction. Every extra step is a mistake the system never learns about.</li>
+        </ul>
+      </div>
+
+      <div class="guide-section">
+        <span class="guide-tag">INTERACTIVE FLOW</span>
+        <h4>Recommended Click Path</h4>
+        <ol class="guide-steps">
+          <li><strong>Screen 1:</strong> Click row 1 (<code>ASHFORD PMTS LTD</code> · $47,320.00).</li>
+          <li><strong>Screen 2:</strong> In the right panel, observe the 6 open invoices, then click <strong>Apply payment</strong>.</li>
+          <li><strong>Inline Card:</strong> Note the 3rd-time repetition anchor and evidence. Click <strong>Remember this payer</strong>.</li>
+          <li><strong>Screen 3:</strong> Review the <strong>Why this matched</strong> reasoning block, the partial invoice (<strong>$153.00 still open</strong>), and test the 1-click <strong>"This is wrong — unapply"</strong> button.</li>
+          <li><strong>Screen 4:</strong> Click the saved payer link or tab. Try deleting the rule to see the <strong>$312,400 consequence prompt</strong>.</li>
+        </ol>
+      </div>
+
+      <div class="guide-section">
+        <span class="guide-tag">QUICK NAVIGATE</span>
+        <div class="quick-nav-buttons">
+          <button class="btn-nav-jump" onclick="switchView('screen-1')">Screen 1: Queue</button>
+          <button class="btn-nav-jump" onclick="switchView('screen-2')">Screen 2: Resolution</button>
+          <button class="btn-nav-jump" onclick="switchView('screen-3')">Screen 3: Reasoning</button>
+          <button class="btn-nav-jump" onclick="switchView('screen-4')">Screen 4: Saved Payers</button>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <script src="app.js"></script>
+</body>
+</html>
